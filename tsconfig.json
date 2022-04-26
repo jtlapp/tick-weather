@@ -1,0 +1,27 @@
+{
+    "compilerOptions": {
+        "sourceMap": true,
+        "sourceRoot": "build",
+        "lib": ["esnext"],
+        "declaration": true,
+        "outDir": "build",
+        "stripInternal": true,
+        "strict": true,
+        "pretty": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noImplicitReturns": true,
+        "noFallthroughCasesInSwitch": true,
+        "noEmitOnError": true,
+        "allowSyntheticDefaultImports": true,
+        "emitDecoratorMetadata": true,
+        "experimentalDecorators": true,
+    },
+    "include": [
+        "src/**/*.ts"
+    ],
+    "exclude": [
+        "node_modules/*",
+        "build/*"
+    ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "tick-weather",
+  "version": "0.1.0",
+  "description": "Tick Weather",
+  "main": "build/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jtlapp/tick-weather.git"
+  },
+  "author": "Joseph T. Lapp",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/jtlapp/tick-weather/issues"
+  },
+  "homepage": "https://github.com/jtlapp/tick-weather#readme",
+  "devDependencies": {
+    "fast-csv": "^4.3.6"
+  }
+}
