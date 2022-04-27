@@ -1,100 +1,151 @@
-import { LifeStage, TickData, DeerTick } from "./tick_data";
+import { MILLIS_PER_HOUR, LifeStage, TickData, DeerTick } from "./tick_data";
+
+const MAX_ORDER_FOUND_DATE_DIFF_DAYS = 4;
 
 interface DatelessRecord {
-  tickId: string;
+  tickID: string;
   species: string;
   lifeStage: LifeStage;
-  engorgement: string;
+  engorgementLabel: string;
+  engorgementHours: number;
   orderDate: Date;
   zipCode: number;
 }
 
 export class TickCheckData extends TickData {
-  avgFeedingHours: Record<string, number> = {};
+  // hours indexed by stage and then engorgement label
+  avgFeedingHours: Record<string, Record<string, number>> = {};
+  // millis diff indexed by stage and then engorgement label
+  avgOrderDiffMillis: Record<string, Record<string, number>> = {};
 
   _filepath: string;
-  _totalFeedingHoursAndRecords: Record<string, number[]>;
-  _totalOrderDiffAndRecords: Record<string, number[]>;
+  // totals indexed by stage and then engorgement label
+  _totalFeedingHoursAndRecords: Record<string, Record<string, number[]>> = {};
+  _totalOrderDiffAndRecords: Record<string, Record<string, number[]>> = {};
   _datelessRecords: DatelessRecord[] = [];
 
   constructor(filepath: string) {
     super();
     this._filepath = filepath;
-    this._totalFeedingHoursAndRecords = {
-      unengorged: [0, 0],
-      "semi-engorged": [0, 0],
-      "fully engorged": [0, 0],
-    };
-    this._totalOrderDiffAndRecords = {
-      unengorged: [0, 0],
-      "semi-engorged": [0, 0],
-      "fully engorged": [0, 0],
-    };
+    for (const lifeStage of Object.keys(LifeStage)) {
+      this._totalFeedingHoursAndRecords[lifeStage] = {
+        unengorged: [0, 0],
+        "semi-engorged": [0, 0],
+        "fully engorged": [0, 0],
+      };
+      this._totalOrderDiffAndRecords[lifeStage] = {
+        unengorged: [0, 0],
+        "semi-engorged": [0, 0],
+        "fully engorged": [0, 0],
+      };
+    }
   }
 
   async load() {
+    // Load all of the TickCheck data rows.
+
     await this.processRows(this._filepath);
 
-    for (const [engorgement, totals] of Object.entries(
-      this._totalFeedingHoursAndRecords
-    )) {
-      this.avgFeedingHours[engorgement] = Math.round(totals[0] / totals[1]);
+    // Determine average feeding time as a function of life stage and
+    // engorgement label. I'll use this information to estimate engorgement
+    // durations in TickReport data, which only provides engorgement labels.
+
+    for (const lifeStage of Object.keys(LifeStage)) {
+      for (const [engorgementLabel, totals] of Object.entries(
+        this._totalFeedingHoursAndRecords[lifeStage]
+      )) {
+        let lifeStageHours = this.avgFeedingHours[lifeStage];
+        if (!lifeStageHours) {
+          lifeStageHours = {};
+          this.avgFeedingHours[lifeStage] = lifeStageHours;
+        }
+        lifeStageHours[engorgementLabel] = Math.round(totals[0] / totals[1]);
+      }
     }
 
-    const avgOrderDiffMillis: Record<string, number> = {};
-    for (const [engorgement, totals] of Object.entries(
-      this._totalOrderDiffAndRecords
-    )) {
-      avgOrderDiffMillis[engorgement] = Math.round(totals[0] / totals[1]);
-    }
+    // Determine average time between time order placed and time tick was
+    // discovered as a function of life stage and engorgement label. I'll
+    // use this information to estimate tick encounter time in TickCheck
+    // records that do not provide a tick encounter time.
 
+    for (const lifeStage of Object.keys(LifeStage)) {
+      for (const [engorgementLabel, totals] of Object.entries(
+        this._totalOrderDiffAndRecords[lifeStage]
+      )) {
+        let lifeStageDiffs = this.avgOrderDiffMillis[lifeStage];
+        if (!lifeStageDiffs) {
+          lifeStageDiffs = {};
+          this.avgOrderDiffMillis[lifeStage] = lifeStageDiffs;
+        }
+        lifeStageDiffs[engorgementLabel] = Math.round(totals[0] / totals[1]);
+      }
+    }
     for (const record of this._datelessRecords) {
-      const encounterDate = new Date(
-        record.orderDate.getTime() - avgOrderDiffMillis[record.engorgement]
+      const estimatedFoundDate = new Date(
+        record.orderDate.getTime() -
+          this.avgOrderDiffMillis[record.lifeStage][record.engorgementLabel]
+      );
+      const encounterDate = this._toEncounterDate(
+        estimatedFoundDate,
+        record.engorgementHours
       );
       this.records.push({
-        tickId: record.tickId,
+        tickID: record.tickID,
         source: "TickCheck",
         species: record.species,
         lifeStage: record.lifeStage,
         year: encounterDate.getUTCFullYear(),
-        month: encounterDate.getUTCMonth(),
-        day: encounterDate.getUTCDay(),
+        month: encounterDate.getUTCMonth() + 1,
+        day: encounterDate.getUTCDate(),
         zipCode: record.zipCode,
       });
     }
+
+    // TODO: Maybe assign engorgement hours to 0-hours if at some
+    // level of engorgement.
+  }
+
+  printInfo() {
+    console.log(
+      "avgFeedingHours:",
+      JSON.stringify(this.avgFeedingHours, undefined, "  ")
+    );
+    const avgOrderDiffHours = Object.assign({}, this.avgOrderDiffMillis);
+    for (const lifeStage of Object.keys(LifeStage)) {
+      for (const [engorgementLabel, millis] of Object.entries(
+        avgOrderDiffHours[lifeStage]
+      )) {
+        avgOrderDiffHours[lifeStage][engorgementLabel] = Math.round(
+          millis / MILLIS_PER_HOUR
+        );
+      }
+    }
+    console.log(
+      "avgOrderDiffHours:",
+      JSON.stringify(avgOrderDiffHours, undefined, "  ")
+    );
+    console.log("Number of dateless records", this._datelessRecords.length);
   }
 
   protected _createRecord(row: any) {
-    const rawTickID = row["Tid"].trim();
+    // Extract basic data from the row, returning null if it does not
+    // meet the minimum requirements, in order ignore the data.
+
+    const tickID = row["tick_id"].trim();
     const orderCreatedAt = this._norm(row["order_created_at"]);
     if (orderCreatedAt === null) return null;
-    const rawSpecies = row["tick_type_binomial_name"].trim();
-    if (rawSpecies !== DeerTick) return null;
-    const normLifeStage = this._norm(row["tick_type_binomial_name"]);
-    if (normLifeStage === null) return null;
-    const normEngorgement = this._norm(row["engorgement_level"]);
-    const normEngorgementTime = this._norm(row["engorgement_time"]);
-    let engorgementTime = 0;
-    if (normEngorgementTime === null || normEngorgementTime === "0") {
-      engorgementTime = 3.5;
-      if (normEngorgement !== "unengorged") {
-        throw Error("Violates assumption that null or 0 time is unengorged");
-      }
-    } else {
-      engorgementTime = parseInt(normEngorgementTime);
-      if (
-        isNaN(engorgementTime) ||
-        engorgementTime < 0 ||
-        engorgementTime > 100
-      ) {
-        return null;
-      }
+    const species = row["tick_type_binomial_name"].trim();
+    if (species !== DeerTick) return null;
+    let engorgementLabel = this._norm(row["engorgement_level"]);
+    if (engorgementLabel == null || engorgementLabel == "undetermined") {
+      return null;
     }
+    const normLifeStage = this._norm(row["life_stage"]);
+    if (normLifeStage === null) return null;
     const lifeStage = this._toLifeStage(normLifeStage);
     if (lifeStage == null) return null;
-    const zipcode = parseInt(row["zip"].trim());
-    if (isNaN(zipcode) || zipcode < 0 || zipcode >= 100000) {
+    const zipCode = parseInt(row["zip"].trim());
+    if (isNaN(zipCode) || zipCode < 0 || zipCode >= 100000) {
       return null;
     }
     const rawFoundDate = this._norm(row["tick_found_date"]);
@@ -103,61 +154,107 @@ export class TickCheckData extends TickData {
       try {
         foundDate = new Date(rawFoundDate);
       } catch (err) {
-        // ignore
+        // ignore parse error; foundDate will remain null
       }
     }
 
-    if (normEngorgement !== null) {
+    // Determine the tick engorgement time.
+
+    const rawEngorgementTime = row["engorgement_time"].trim();
+    let engorgementHours = 0;
+    if (engorgementLabel === "unengorged" && rawEngorgementTime === "") {
+      // TickCheck folks said unengorged means between 0 and 7 hours.
+      engorgementHours = 3.5;
+    } else {
+      engorgementHours = parseInt(rawEngorgementTime);
+      if (
+        isNaN(engorgementHours) ||
+        engorgementHours < 0 ||
+        engorgementHours > 100
+      ) {
+        return null;
+      }
+    }
+
+    // Track engorgement time as a function of engorgement label. It seems
+    // that engorgement is not always provided, so ignore zeros except for
+    // unengorged specimens, which are assumed to have accurate hours.
+
+    if (engorgementHours > 0 || engorgementLabel == "unengorged") {
       const engorgementTotals =
-        this._totalFeedingHoursAndRecords[normEngorgement];
+        this._totalFeedingHoursAndRecords[lifeStage][engorgementLabel];
       if (engorgementTotals !== undefined) {
-        engorgementTotals[0] += engorgementTime;
+        engorgementTotals[0] += engorgementHours;
         ++engorgementTotals[1];
       }
-      if (foundDate !== null) {
-        const timeDiffTotals = this._totalOrderDiffAndRecords[normEngorgement];
-        if (timeDiffTotals !== undefined) {
-          timeDiffTotals[0] +=
-            new Date(orderCreatedAt).getTime() - foundDate.getTime();
-          ++timeDiffTotals[1];
+    }
+
+    // Track difference between found date and order date as a function of
+    // engorgement time.
+
+    if (foundDate !== null) {
+      const timeDiffTotals =
+        this._totalOrderDiffAndRecords[lifeStage][engorgementLabel];
+      if (timeDiffTotals !== undefined) {
+        const orderFoundDiffMillis =
+          new Date(orderCreatedAt).getTime() - foundDate.getTime();
+        if (
+          orderFoundDiffMillis >
+          MAX_ORDER_FOUND_DATE_DIFF_DAYS * 24 * MILLIS_PER_HOUR
+        ) {
+          // ignore apparently bad data
+          return null;
         }
+        timeDiffTotals[0] += orderFoundDiffMillis;
+
+        ++timeDiffTotals[1];
       }
     }
 
+    // Collect records that lack encounter dates for later processing to
+    // determine encounter dates relative to order date as a function of
+    // engorgementn label.
+
     if (rawFoundDate === null) {
-      if (normEngorgement !== null) {
+      if (engorgementLabel !== null) {
         this._datelessRecords.push({
-          tickId: rawTickID,
-          species: rawSpecies,
-          lifeStage: lifeStage,
-          engorgement: normEngorgement,
+          tickID: tickID,
+          species: species,
+          lifeStage,
+          engorgementLabel,
+          engorgementHours,
           orderDate: new Date(orderCreatedAt),
-          zipCode: zipcode,
+          zipCode,
         });
       }
       return null;
-    } else {
-      let encounterDate: Date;
-      try {
-        encounterDate = this._toEncounterDate(
-          new Date(rawFoundDate),
-          engorgementTime
-        );
-      } catch (_err) {
-        return null;
-      }
-
-      return {
-        tickId: rawTickID,
-        source: "TickCheck",
-        species: rawSpecies,
-        lifeStage: lifeStage,
-        year: encounterDate.getUTCFullYear(),
-        month: encounterDate.getUTCMonth(),
-        day: encounterDate.getUTCDay(),
-        zipCode: zipcode,
-      };
     }
+
+    // Determine the encounter date as a function of found date and
+    // estimated engorgement time.
+
+    let encounterDate: Date;
+    try {
+      encounterDate = this._toEncounterDate(
+        new Date(rawFoundDate),
+        engorgementHours
+      );
+    } catch (_err) {
+      return null;
+    }
+
+    // Return a complete TickCheck record.
+
+    return {
+      tickID: tickID,
+      source: "TickCheck",
+      species: species,
+      lifeStage,
+      year: encounterDate.getUTCFullYear(),
+      month: encounterDate.getUTCMonth() + 1, // 1 - 12
+      day: encounterDate.getUTCDate(), // 1 - 31
+      zipCode,
+    };
   }
 
   private _toLifeStage(rawLifeStage: string): LifeStage | null {

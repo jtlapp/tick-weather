@@ -4,6 +4,7 @@
   "description": "Tick Weather",
   "main": "build/index.js",
   "scripts": {
+    "gen-tick-data": "tsc && node --enable-source-maps build/gen-tick-data.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

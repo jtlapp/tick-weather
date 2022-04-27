@@ -3,18 +3,18 @@ import { parse as parseCSV } from "@fast-csv/parse";
 
 const HOUR_TICK_FOUND = (23 + 7) / 2; // halfway bewteen 7am and 11pm
 const MINS_UNTIL_FEEDING = 30;
-const MILLIS_PER_HOUR = 60 * 60 * 1000;
+export const MILLIS_PER_HOUR = 60 * 60 * 1000;
 
 export const DeerTick = "Ixodes scapularis";
 
 export enum LifeStage {
-  nymph,
-  adult,
-  larva,
+  nymph = "nymph",
+  adult = "adult",
+  larva = "larva",
 }
 
 export interface TickRecord {
-  tickId: string;
+  tickID: string;
   source: string;
   species: string;
   lifeStage: LifeStage;
@@ -51,10 +51,12 @@ export abstract class TickData {
   }
 
   protected _toEncounterDate(date: Date, feedingHours: number): Date {
-    const utc = date.toUTCString();
-    const utcT0 = utc.substring(0, utc.indexOf("T")) + "T00:00:00.000Z";
-    const date0 = new Date(utcT0);
+    const iso = date.toISOString();
+    const isoT0 = iso.substring(0, iso.indexOf("T")) + "T00:00:00.000Z";
+    const date0 = new Date(isoT0);
     const middayMillis = date0.getTime() + HOUR_TICK_FOUND * MILLIS_PER_HOUR;
-    return new Date(middayMillis - feedingHours - MINS_UNTIL_FEEDING);
+    return new Date(
+      middayMillis - feedingHours * MILLIS_PER_HOUR - MINS_UNTIL_FEEDING
+    );
   }
 }

@@ -2,17 +2,28 @@ import { DeerTick, LifeStage, TickData } from "./tick_data";
 
 export class TickReportData extends TickData {
   filepath: string;
-  feedingHours: Record<string, number>;
+  avgFeedingHours: Record<string, Record<string, number>>;
 
   constructor(filepath: string) {
     super();
     this.filepath = filepath;
-    // TODO: Get averages from the TickCheck data.
-    this.feedingHours = {
-      flat: 0,
-      "partially fed": 0,
-      engorged: 0,
-      replete: 0,
+    // Derived from TickCheck data.
+    this.avgFeedingHours = {
+      nymph: {
+        unengorged: 4,
+        "semi-engorged": 33,
+        "fully engorged": 99,
+      },
+      adult: {
+        unengorged: 7,
+        "semi-engorged": 57,
+        "fully engorged": 99,
+      },
+      larva: {
+        unengorged: 3,
+        "semi-engorged": 37,
+        "fully engorged": 98,
+      },
     };
   }
 
@@ -22,52 +33,76 @@ export class TickReportData extends TickData {
   }
 
   protected _createRecord(row: any) {
-    const rawSpecies = row["Species"].trim();
-    if (rawSpecies !== DeerTick) return null;
+    const tickID = row["Tid"].trim();
+    const species = row["Species"].trim();
+    if (species !== DeerTick) return null;
     const normLifeStage = this._norm(row["Stage"]);
     if (normLifeStage === null) return null;
     const lifeStage = this._toLifeStage(normLifeStage);
     if (lifeStage == null) return null;
-    const feedingState = this._norm(row["Feeding state"]);
-    if (feedingState === null) return null;
-    const zipcode = parseInt(row["Location Zip"].trim());
-    if (isNaN(zipcode) || zipcode < 0 || zipcode >= 100000) {
+    const normFeedingState = this._norm(row["Feeding state"]);
+    if (normFeedingState === null) return null;
+    const feedingHours = this._toFeedingHours(lifeStage, normFeedingState);
+    if (feedingHours == null) return null;
+    const zipCode = parseInt(row["Location Zip"].trim());
+    if (isNaN(zipCode) || zipCode < 0 || zipCode >= 100000) {
       return null;
     }
     const rawRemovedDate = this._norm(row["Tick Removed Date"]);
     if (rawRemovedDate === null) return null;
-    const rawTickID = row["Tid"].trim();
 
     let encounterDate: Date;
     try {
       encounterDate = this._toEncounterDate(
         new Date(rawRemovedDate),
-        this.feedingHours[feedingState]
+        feedingHours
       );
     } catch (_err) {
       return null;
     }
 
     return {
-      tickId: rawTickID,
+      tickID,
       source: "TickReport",
-      species: rawSpecies,
+      species,
       lifeStage: lifeStage,
       year: encounterDate.getUTCFullYear(),
-      month: encounterDate.getUTCMonth(),
-      day: encounterDate.getUTCDay(),
-      zipCode: zipcode,
+      month: encounterDate.getUTCMonth() + 1, // 1 - 12
+      day: encounterDate.getUTCDate(), // 1 - 31
+      zipCode: zipCode,
     };
   }
 
-  private _toLifeStage(rawLifeStage: string): LifeStage | null {
-    switch (rawLifeStage) {
+  private _toLifeStage(normLifeStage: string): LifeStage | null {
+    switch (normLifeStage) {
       case "larva":
         return LifeStage.larva;
       case "nymph":
         return LifeStage.nymph;
       case "adult":
         return LifeStage.adult;
+      default:
+        return null;
+    }
+  }
+
+  private _toFeedingHours(
+    lifeStage: LifeStage,
+    normFeedingState: string
+  ): number | null {
+    const lifeStageHours = this.avgFeedingHours[lifeStage];
+    switch (normFeedingState) {
+      case "flat":
+        return lifeStageHours["unengorged"];
+      case "partially fed":
+        return lifeStageHours["semi-engorged"];
+      case "enrgorged":
+        return Math.round(
+          (lifeStageHours["semi-engorged"] + lifeStageHours["fully engorged"]) /
+            2
+        );
+      case "replete":
+        return lifeStageHours["fully engorged"];
       default:
         return null;
     }

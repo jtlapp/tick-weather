@@ -1,4 +1,7 @@
 .DS_Store
+out.txt
+out.csv
+build/
 
 # Logs
 logs
