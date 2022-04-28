@@ -1,9 +1,11 @@
-import { MILLIS_PER_HOUR, LifeStage, TickData, DeerTick } from "./tick_data";
+import { LifeStage } from "./tick_occurrence";
+import { MILLIS_PER_HOUR, TickData, DeerTick } from "./tick_data";
 
 const MAX_ORDER_FOUND_DATE_DIFF_DAYS = 4;
 
-interface DatelessRecord {
+interface IncompleteRecord {
   tickID: string;
+  foundDate: Date | null;
   species: string;
   lifeStage: LifeStage;
   engorgementLabel: string;
@@ -22,7 +24,7 @@ export class TickCheckData extends TickData {
   // totals indexed by stage and then engorgement label
   _totalFeedingHoursAndRecords: Record<string, Record<string, number[]>> = {};
   _totalOrderDiffAndRecords: Record<string, Record<string, number[]>> = {};
-  _datelessRecords: DatelessRecord[] = [];
+  _incompleteRecords: IncompleteRecord[] = [];
 
   constructor(filepath: string) {
     super();
@@ -80,14 +82,26 @@ export class TickCheckData extends TickData {
         lifeStageDiffs[engorgementLabel] = Math.round(totals[0] / totals[1]);
       }
     }
-    for (const record of this._datelessRecords) {
-      const estimatedFoundDate = new Date(
-        record.orderDate.getTime() -
-          this.avgOrderDiffMillis[record.lifeStage][record.engorgementLabel]
-      );
+
+    // Generate complete records from incomplete records using the
+    // above-established averages as estimates.
+
+    for (const record of this._incompleteRecords) {
+      let estimatedFoundDate = record.foundDate;
+      if (!estimatedFoundDate) {
+        estimatedFoundDate = new Date(
+          record.orderDate.getTime() -
+            this.avgOrderDiffMillis[record.lifeStage][record.engorgementLabel]
+        );
+      }
+      let engorgementHours = record.engorgementHours;
+      if (record.engorgementLabel != "unengorged" && !engorgementHours) {
+        const lifeStageHours = this.avgFeedingHours[record.lifeStage];
+        engorgementHours = lifeStageHours[record.engorgementLabel];
+      }
       const encounterDate = this._toEncounterDate(
         estimatedFoundDate,
-        record.engorgementHours
+        engorgementHours
       );
       this.records.push({
         tickID: record.tickID,
@@ -101,8 +115,11 @@ export class TickCheckData extends TickData {
       });
     }
 
-    // TODO: Maybe assign engorgement hours to 0-hours if at some
-    // level of engorgement.
+    // Assign engorgement hour estimates to engorged specimens without them.
+
+    // for (const record of this.records) {
+    //   if (record.
+    // }
   }
 
   printInfo() {
@@ -124,7 +141,6 @@ export class TickCheckData extends TickData {
       "avgOrderDiffHours:",
       JSON.stringify(avgOrderDiffHours, undefined, "  ")
     );
-    console.log("Number of dateless records", this._datelessRecords.length);
   }
 
   protected _createRecord(row: any) {
@@ -211,15 +227,15 @@ export class TickCheckData extends TickData {
       }
     }
 
-    // Collect records that lack encounter dates for later processing to
-    // determine encounter dates relative to order date as a function of
-    // engorgementn label.
+    // Collect records that lack found dates or engorgment hours for
+    // processing later when these can be estimated.
 
-    if (rawFoundDate === null) {
+    if (!rawFoundDate || !engorgementHours) {
       if (engorgementLabel !== null) {
-        this._datelessRecords.push({
-          tickID: tickID,
-          species: species,
+        this._incompleteRecords.push({
+          tickID,
+          foundDate,
+          species,
           lifeStage,
           engorgementLabel,
           engorgementHours,

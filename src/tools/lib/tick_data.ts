@@ -1,31 +1,16 @@
 import * as fs from "fs";
 import { parse as parseCSV } from "@fast-csv/parse";
 
+import { TickOccurrence } from "./tick_occurrence";
+
 const HOUR_TICK_FOUND = (23 + 7) / 2; // halfway bewteen 7am and 11pm
 const MINS_UNTIL_FEEDING = 30;
 export const MILLIS_PER_HOUR = 60 * 60 * 1000;
 
 export const DeerTick = "Ixodes scapularis";
 
-export enum LifeStage {
-  nymph = "nymph",
-  adult = "adult",
-  larva = "larva",
-}
-
-export interface TickRecord {
-  tickID: string;
-  source: string;
-  species: string;
-  lifeStage: LifeStage;
-  year: number;
-  month: number;
-  day: number;
-  zipCode: number;
-}
-
 export abstract class TickData {
-  records: TickRecord[] = [];
+  records: TickOccurrence[] = [];
 
   async processRows(filepath: string) {
     return new Promise<void>((resolve, reject) => {
@@ -43,7 +28,7 @@ export abstract class TickData {
     });
   }
 
-  protected abstract _createRecord(row: any): TickRecord | null;
+  protected abstract _createRecord(row: any): TickOccurrence | null;
 
   protected _norm(value: string): string | null {
     value = value.trim().toLowerCase();

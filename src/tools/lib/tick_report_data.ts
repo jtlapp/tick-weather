@@ -1,4 +1,5 @@
-import { DeerTick, LifeStage, TickData } from "./tick_data";
+import { LifeStage } from "./tick_occurrence";
+import { DeerTick, TickData } from "./tick_data";
 
 export class TickReportData extends TickData {
   filepath: string;
@@ -9,6 +10,11 @@ export class TickReportData extends TickData {
     this.filepath = filepath;
     // Derived from TickCheck data.
     this.avgFeedingHours = {
+      larva: {
+        unengorged: 3,
+        "semi-engorged": 37,
+        "fully engorged": 98,
+      },
       nymph: {
         unengorged: 4,
         "semi-engorged": 33,
@@ -18,11 +24,6 @@ export class TickReportData extends TickData {
         unengorged: 7,
         "semi-engorged": 57,
         "fully engorged": 99,
-      },
-      larva: {
-        unengorged: 3,
-        "semi-engorged": 37,
-        "fully engorged": 98,
       },
     };
   }
@@ -44,7 +45,7 @@ export class TickReportData extends TickData {
     if (normFeedingState === null) return null;
     const feedingHours = this._toFeedingHours(lifeStage, normFeedingState);
     if (feedingHours == null) return null;
-    const zipCode = parseInt(row["Location Zip"].trim());
+    const zipCode = parseInt(row["Location Zip Code"].trim());
     if (isNaN(zipCode) || zipCode < 0 || zipCode >= 100000) {
       return null;
     }
@@ -96,7 +97,7 @@ export class TickReportData extends TickData {
         return lifeStageHours["unengorged"];
       case "partially fed":
         return lifeStageHours["semi-engorged"];
-      case "enrgorged":
+      case "engorged":
         return Math.round(
           (lifeStageHours["semi-engorged"] + lifeStageHours["fully engorged"]) /
             2
