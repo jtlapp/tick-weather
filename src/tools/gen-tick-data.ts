@@ -3,25 +3,25 @@ import { format as formatCsv, type CsvFormatterStream } from "@fast-csv/format";
 
 import type { TickData } from "./lib/tick_data";
 import { TickCheckData } from "./lib/tick_check_data";
-//import { TickReportData } from "./lib/tick_report_data";
+import { TickReportData } from "./lib/tick_report_data";
 
 const tickCheckFile = path.join(__dirname, "../../tick-data/TickCheck.csv");
-//const tickReportFile = path.join(__dirname, "../../tick-data/TickReport.csv");
+const tickReportFile = path.join(__dirname, "../../tick-data/TickReport.csv");
 
 const tickCheckData = new TickCheckData(tickCheckFile);
-//const tickReportData = new TickReportData(tickReportFile);
+const tickReportData = new TickReportData(tickReportFile);
 
 (async () => {
   await tickCheckData.load();
-  //await tickReportData.load();
-  console.log(tickCheckData.records.length);
+  await tickReportData.load();
+  console.log(tickReportData.records.length);
 
   const stream = formatCsv();
   stream.pipe(process.stdout);
 
-  stream.write(Object.keys(tickCheckData.records[0]));
+  stream.write(Object.keys(tickReportData.records[0]));
   writeRecords(stream, tickCheckData);
-  //writeRecords(stream, tickReportData);
+  writeRecords(stream, tickReportData);
   console.log();
   tickCheckData.printInfo();
 })();
