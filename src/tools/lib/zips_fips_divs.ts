@@ -1,40 +1,42 @@
 import * as fs from "fs";
 import { parse as parseCSV } from "@fast-csv/parse";
 
-export interface ZipFipsDiv {
-  zipCode: number;
-  countyFips: number;
-  climateDivision: number;
-}
+export async function loadFipsByZip(
+  filepath: string
+): Promise<Record<number, number>> {
+  const fipsByZip: Record<number, number> = {};
 
-export async function loadCodes(filepath: string): Promise<ZipFipsDiv[]> {
-  const entries: ZipFipsDiv[] = [];
-
-  return new Promise<ZipFipsDiv[]>((resolve, reject) => {
+  return new Promise<Record<number, number>>((resolve, reject) => {
     fs.createReadStream(filepath)
       .pipe(parseCSV({ headers: true }))
       .on("data", (row) => {
-        entries.push({
-          zipCode: row["POSTAL_FIPS_ID"],
-          countyFips: row["NCDC_FIPS_ID"],
-          climateDivision: row["CLIMDIV_ID"],
-        });
+        fipsByZip[parseInt(row["ZIP"])] = parseInt(row["STCOUNTYFP"]);
       })
-      .on("end", () => resolve(entries))
+      .on("end", () => resolve(fipsByZip))
       .on("error", (err) => {
-        console.log("Streaming error:", err);
+        console.log("loadFipsByZip streaming error:", err);
         reject(err);
       });
   });
 }
 
-export async function loadCodesByZip(
+export async function loadDivsByFips(
   filepath: string
-): Promise<Record<number, ZipFipsDiv>> {
-  const entries = await loadCodes(filepath);
-  const codesByZip: Record<number, ZipFipsDiv> = {};
-  for (const entry of entries) {
-    codesByZip[entry.zipCode] = entry;
-  }
-  return codesByZip;
+): Promise<Record<number, number>> {
+  const divsByFips: Record<number, number> = {};
+
+  return new Promise<Record<number, number>>((resolve, reject) => {
+    fs.createReadStream(filepath)
+      .pipe(parseCSV({ headers: true, delimiter: " " }))
+      .on("data", (row) => {
+        divsByFips[parseInt(row["POSTAL_FIPS_ID"])] = parseInt(
+          row["CLIMDIV_ID"]
+        );
+      })
+      .on("end", () => resolve(divsByFips))
+      .on("error", (err) => {
+        console.log("loadDivsByFips streaming error:", err);
+        reject(err);
+      });
+  });
 }

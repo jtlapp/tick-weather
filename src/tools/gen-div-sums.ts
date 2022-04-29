@@ -2,12 +2,13 @@ import * as path from "path";
 
 import { LifeStage } from "./lib/tick_occurrence";
 import { loadOccurrences } from "./lib/tick_occurrence";
-import { loadCodesByZip } from "./lib/zips_fips_divs";
+import { loadFipsByZip, loadDivsByFips } from "./lib/zips_fips_divs";
 
-const zipFipsDivFile = path.join(
+const zipsFipsFile = path.join(
   __dirname,
-  "../../tick-data/noaa-zip-fips-divs.txt"
+  "../../tick-data/ZIP-COUNTY-FIPS_2018-03 data-world.csv"
 );
+const fipsDivsFile = path.join(__dirname, "../../tick-data/noaa-fips-divs.txt");
 const occurrenceFile = path.join(
   __dirname,
   "../../tick-data/tick-occurrences.csv"
@@ -29,10 +30,12 @@ type DataByLifeStage = Record<string, DataByYear>;
 type DataBySource = Record<string, DataByLifeStage>;
 
 const data: DataBySource = {};
-let unrecognizedZipCodeCount = 0;
+let unrecognizedZipCodes: number[] = [];
+let unrecognizedFips: number[] = [];
 
 async function generateData() {
-  const codesByZip = await loadCodesByZip(zipFipsDivFile);
+  const fipsByZip = await loadFipsByZip(zipsFipsFile);
+  const divsByFips = await loadDivsByFips(fipsDivsFile);
   const occurrences = await loadOccurrences(occurrenceFile);
 
   for (const occurrence of occurrences) {
@@ -45,7 +48,7 @@ async function generateData() {
     let lifeStageData = sourceData[occurrence.lifeStage];
     if (!lifeStageData) {
       lifeStageData = {};
-      sourceData[occurrence.source] = lifeStageData;
+      sourceData[occurrence.lifeStage] = lifeStageData;
     }
 
     let yearData = lifeStageData[occurrence.year];
@@ -54,13 +57,18 @@ async function generateData() {
       lifeStageData[occurrence.year] = yearData;
     }
 
-    const codes = codesByZip[occurrence.zipCode];
-    if (!codes) {
-      ++unrecognizedZipCodeCount;
+    const fips = fipsByZip[occurrence.zipCode];
+    if (!fips) {
+      unrecognizedZipCodes.push(occurrence.zipCode);
       continue;
     }
 
-    const climateDivision = codes.climateDivision;
+    const climateDivision = divsByFips[fips];
+    if (!climateDivision) {
+      unrecognizedFips.push(fips);
+      continue;
+    }
+
     let divisionData = yearData[climateDivision];
     if (!divisionData) {
       const counts: number[][] = [];
@@ -110,5 +118,15 @@ function printData() {
 (async () => {
   await generateData();
   printData();
-  console.log(`\n${unrecognizedZipCodeCount} unrecognized zip codes`);
+  console.log();
+  console.log(
+    `${unrecognizedZipCodes.length} records with unrecognized zip codes`
+  );
+  if (unrecognizedZipCodes.length > 0) {
+    console.log("  e.g.", unrecognizedZipCodes.slice(0, 10).join(", "));
+  }
+  console.log(`${unrecognizedFips.length} records with unrecognized fips`);
+  if (unrecognizedFips.length > 0) {
+    console.log("  e.g.", unrecognizedFips.slice(0, 10).join(", "));
+  }
 })();
